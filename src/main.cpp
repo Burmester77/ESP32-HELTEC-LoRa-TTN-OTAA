@@ -23,31 +23,96 @@
 #include <Adafruit_BME280.h> 
 #include <esp_sleep.h>
 
-// Pin für den Anemometer (Windmesser) definieren
+// Sensor-Pins
 #define anemoPin 47
 #define rainPin 7
+#define windVanePin 3
 
-// BME280 Sensor-Objekt erstellen
+// BME280 Sensor object initialisation
 Adafruit_BME280 bme;
 
-// Globale Variablen für Sensorwerte
+// Globale variables for sensor data
 float temperature = 0.0;        // Temperatur in °C
-float humidity = 0.0;           // Luftfeuchtigkeit in %
-float pressure = 0.0;           // Luftdruck in hPa 
-volatile int windCnt = 0;       // Anzahl der Impulse des Anemometers
-float windspeed;                // Windgeschwindigkeit in km/h
-RTC_DATA_ATTR volatile int rainCnt = 0;       // Anzahl der Impulse des Regenmesser
-RTC_DATA_ATTR unsigned long lastRainReset = 0; // Zeitpunkt des letzten Resets des Regenmessers
-RTC_DATA_ATTR float hourlyRainAmount = 0.0;          // Regenmenge in mm
-RTC_DATA_ATTR float rainAmount = 0.0;          // Regenmenge in mm
-unsigned long lastRainTipTime = 0; // Zeitpunkt des letzten Regenimpulses
-const unsigned long debounceInterval = 100; // Entprellzeit für den Regenmesser
+float humidity = 0.0;           // Humidity in %
+float pressure = 0.0;           // Airpressure in hPa 
+volatile int windCnt = 0;       // Counter for wind impulses
+float windspeed;                // Windspeed km/h
+RTC_DATA_ATTR volatile int rainCnt = 0;       // Counter for rain impulses
+RTC_DATA_ATTR unsigned long lastRainReset = 0; // Time of last rain reset
+RTC_DATA_ATTR float hourlyRainAmount = 0.0;          // hourly rain amount in mm 
+RTC_DATA_ATTR float rainAmount = 0.0;          // measured rain amount in mm
+unsigned long lastRainTipTime = 0; // Time of last rain tip
+const unsigned long debounceInterval = 100; // Debounce interval for rain gauge
 
-// I2C1-Pins (alternative Pins für den BME280, da I2C0 für das Display verwendet wird)
+// I2C1-Pins (alternative pins for I2C1 because I2C0 is used by Display)
 static const uint8_t SDA_I2C1 = 45;
 static const uint8_t SCL_I2C1 = 46;
 
+// Wind direction
+// Enum to define the indexes for each wind direction
+enum WindVaneAngles
+{
+    ANGLE_0_0 = 0,
+    ANGLE_22_5,
+    ANGLE_45_0,
+    ANGLE_67_5,
+    ANGLE_90_0,
+    ANGLE_112_5,
+    ANGLE_135_0,
+    ANGLE_157_5,
+    ANGLE_180_0,
+    ANGLE_202_5,
+    ANGLE_225_0,
+    ANGLE_247_5,
+    ANGLE_270_0,
+    ANGLE_292_5,
+    ANGLE_315_0,
+    ANGLE_337_5,
+    NUM_ANGLES
+};
 
+// Angle per index of wind vane (360 / 16 = 22.5)
+#define WIND_VANE_DEGREES_PER_INDEX (360.0 / NUM_ANGLES)
+
+    // ADC values for each wind direction (V(Wind Vane) / 3.3V * 4095)
+    #define ADC_ANGLE_0_0 3137
+    #define ADC_ANGLE_22_5 1625
+    #define ADC_ANGLE_45_0 1848
+    #define ADC_ANGLE_67_5 335
+    #define ADC_ANGLE_90_0 372
+    #define ADC_ANGLE_112_5 261
+    #define ADC_ANGLE_135_0 732
+    #define ADC_ANGLE_157_5 509
+    #define ADC_ANGLE_180_0 1141
+    #define ADC_ANGLE_202_5 980
+    #define ADC_ANGLE_225_0 2520
+    #define ADC_ANGLE_247_5 2407
+    #define ADC_ANGLE_270_0 3786
+    #define ADC_ANGLE_292_5 3315
+    #define ADC_ANGLE_315_0 3548
+    #define ADC_ANGLE_337_5 2805
+
+    #define ADC_RESOLUTION 12
+
+String getWindDirectionLabel(float windDirection) {
+    if (windDirection == 0.0) return "N"; 
+    else if (windDirection == 22.5) return "NNO";
+    else if (windDirection == 45.0) return "NO";
+    else if (windDirection == 67.5) return "ONO";
+    else if (windDirection == 90.0) return "O";
+    else if (windDirection == 112.5) return "OSO";
+    else if (windDirection == 135.0) return "SO";
+    else if (windDirection == 157.5) return "SSO";
+    else if (windDirection == 180.0) return "S";
+    else if (windDirection == 202.5) return "SSW";
+    else if (windDirection == 225.0) return "SW";
+    else if (windDirection == 247.5) return "WSW";
+    else if (windDirection == 270.0) return "W";
+    else if (windDirection == 292.5) return "WNW";
+    else if (windDirection == 315.0) return "NW";
+    else if (windDirection == 337.5) return "NNW";
+    else return "Unknown";
+}
 /*
 
 Schedule downlink (FPort 1)
@@ -72,12 +137,12 @@ They are permanently stored in the device's non-volatile memory.
 
 */
 
-// Funktion für die Interrupt-Routine des Anemometers
+// Anemometer Interrupt-Routine
 void windCounter(){
   windCnt++;
 }
 
-// Funktion zur Messung der Windgeschwindigkeit
+// Function to measure the wind speed
 void measureWind() {
   attachInterrupt(digitalPinToInterrupt(anemoPin), windCounter , FALLING);
   delay(3000); // 3 Sekunden messen
@@ -88,7 +153,7 @@ void measureWind() {
     windCnt = 0;
   }
 
-// Funktion für die Interrupt-Routine des Regenmessers
+// Function to count the rain tips 
 void IRAM_ATTR rainCounter(){
     unsigned long currentTime = millis();
   if (currentTime - lastRainTipTime > debounceInterval) {
@@ -97,6 +162,7 @@ void IRAM_ATTR rainCounter(){
   }
 }
 
+// Function to measure the rain amount
 void measureRain() {
 
   rainAmount = (float)rainCnt * 0.2794;
@@ -111,6 +177,43 @@ void measureRain() {
     lastRainReset = currentMillis;
   }
 
+}
+
+float measureWindDirection(){
+  // Read the wind vane ADC value
+  int adcValue = analogRead(windVanePin);
+
+  // ADC values for each wind direction (V(Wind Vane) / 3.3V * 4095)
+    int adcValues[NUM_ANGLES] = {
+        ADC_ANGLE_0_0, ADC_ANGLE_22_5, ADC_ANGLE_45_0, ADC_ANGLE_67_5,
+        ADC_ANGLE_90_0, ADC_ANGLE_112_5, ADC_ANGLE_135_0, ADC_ANGLE_157_5,
+        ADC_ANGLE_180_0, ADC_ANGLE_202_5, ADC_ANGLE_225_0, ADC_ANGLE_247_5,
+        ADC_ANGLE_270_0, ADC_ANGLE_292_5, ADC_ANGLE_315_0, ADC_ANGLE_337_5
+    };
+  // Wind angles for each wind direction
+    float windAngles[NUM_ANGLES] = {
+        0.0, 22.5, 45.0, 67.5, 90.0, 112.5, 135.0, 157.5,
+        180.0, 202.5, 225.0, 247.5, 270.0, 292.5, 315.0, 337.5
+    };
+
+    // Find the closest ADC value to the measured value
+    int closestIndex = 0;
+    int minDifference = abs(adcValue - adcValues[0]);
+
+    // Iterate through all ADC values and find the closest match
+    for (int i = 1; i < NUM_ANGLES; i++) {
+        int difference = abs(adcValue - adcValues[i]);
+        // If the difference is smaller than the current minimum difference, update the minimum difference and the closest index
+        if (difference < minDifference) {
+            minDifference = difference;
+            closestIndex = i;
+        }
+    }
+
+    float windDirection = windAngles[closestIndex];
+    ALOG_D("ADC Value: %d, Closest Match: %d, Wind Direction: %.1f°", adcValue, adcValues[closestIndex], windDirection);
+
+    return windDirection;
 }
 
 /**
@@ -166,9 +269,17 @@ void prepareTxFrame(uint8_t port)
   uint16_t rainInt = (uint16_t)(rainAmount * 10);
   uint16_t hourlyRainInt = (uint16_t)(hourlyRainAmount * 10);
 
+  float windDirection = measureWindDirection();
+  String windDirectionLabel = getWindDirectionLabel(windDirection);
+  ALOG_D("Wind Direction: %.1f°, %s", windDirection, windDirectionLabel.c_str());
+
+  uint16_t windDirectionInt = (uint16_t)(windDirection / 22.5);
+  ALOG_D("Wind Direction Int: %d", windDirectionInt);
+    
+
 
   // LoRaWAN-Frame aufbauen
-  appDataSize = 15; // Größe wird auf 8 Bytes gesetzt
+  appDataSize = 17; // Größe wird auf 8 Bytes gesetzt
   appData[0] = 0x5A;                   // Preamble
   appData[1] = 0x01;                   // Sensorstatus
   appData[2] = voltageInt;             // Batteriespannung
@@ -183,10 +294,12 @@ void prepareTxFrame(uint8_t port)
   appData[11] = rainInt & 0xFF;        // Regenmenge LSB
   appData[12] = (hourlyRainInt >> 8) & 0xFF; // stündliche Regenmenge MSB
   appData[13] = hourlyRainInt & 0xFF;        // stündliche Regenmenge LSB
+  appData[14] = (windDirectionInt >> 8) & 0xFF; // Windrichtung MSB
+  appData[15] = windDirectionInt & 0xFF;        // Windrichtung LSB
 
 
   // CRC8 über die ersten 7 Bytes berechnen und ans Ende schreiben
-  appData[14] = crc8_le(0, appData, 8);
+  appData[16] = crc8_le(0, appData, 8);
 
   /*
   // Ausgabe der Frame-Daten
@@ -210,6 +323,9 @@ void setup()
   Wire1.begin(SDA_I2C1, SCL_I2C1);
   pinMode(anemoPin, INPUT_PULLUP);
   pinMode(rainPin, INPUT_PULLUP);
+  pinMode(windVanePin, INPUT);
+  analogReadResolution(ADC_RESOLUTION);
+  analogSetAttenuation(ADC_0db);
 
   attachInterrupt(digitalPinToInterrupt(rainPin), rainCounter, FALLING);
 
