@@ -15,7 +15,7 @@
  */
 #include <Arduino.h>
 #include <LoRaWANHandler.hpp>
-#include <BatteryHandler.hpp>
+//#include <BatteryHandler.hpp>
 #include <rom/crc.h>
 #include <alog.h>
 #include <Wire.h>
@@ -26,7 +26,7 @@
 // Sensor-Pins
 #define anemoPin 47
 #define rainPin 7
-#define windVanePin 3
+#define windVanePin 4
 
 // BME280 Sensor object initialisation
 Adafruit_BME280 bme;
@@ -43,6 +43,8 @@ RTC_DATA_ATTR float hourlyRainAmount = 0.0;          // hourly rain amount in mm
 RTC_DATA_ATTR float rainAmount = 0.0;          // measured rain amount in mm
 unsigned long lastRainTipTime = 0; // Time of last rain tip
 const unsigned long debounceInterval = 100; // Debounce interval for rain gauge
+int adcValue; // ADC value for wind direction
+float windDirection; // Wind direction in degrees
 
 // I2C1-Pins (alternative pins for I2C1 because I2C0 is used by Display)
 static const uint8_t SDA_I2C1 = 45;
@@ -75,34 +77,34 @@ enum WindVaneAngles
 #define WIND_VANE_DEGREES_PER_INDEX (360.0 / NUM_ANGLES)
 
     // ADC values for each wind direction (V(Wind Vane) / 3.3V * 4095)
-    #define ADC_ANGLE_0_0 3137
-    #define ADC_ANGLE_22_5 1625
-    #define ADC_ANGLE_45_0 1848
-    #define ADC_ANGLE_67_5 335
-    #define ADC_ANGLE_90_0 372
-    #define ADC_ANGLE_112_5 261
-    #define ADC_ANGLE_135_0 732
-    #define ADC_ANGLE_157_5 509
-    #define ADC_ANGLE_180_0 1141
-    #define ADC_ANGLE_202_5 980
-    #define ADC_ANGLE_225_0 2520
-    #define ADC_ANGLE_247_5 2407
-    #define ADC_ANGLE_270_0 3786
-    #define ADC_ANGLE_292_5 3315
-    #define ADC_ANGLE_315_0 3548
-    #define ADC_ANGLE_337_5 2805
+    #define ADC_ANGLE_0_0 2960
+    #define ADC_ANGLE_22_5 1482
+    #define ADC_ANGLE_45_0 1693
+    #define ADC_ANGLE_67_5 281
+    #define ADC_ANGLE_90_0 310
+    #define ADC_ANGLE_112_5 211
+    #define ADC_ANGLE_135_0 652
+    #define ADC_ANGLE_157_5 439
+    #define ADC_ANGLE_180_0 1036
+    #define ADC_ANGLE_202_5 870
+    #define ADC_ANGLE_225_0 2339
+    #define ADC_ANGLE_247_5 2221
+    #define ADC_ANGLE_270_0 3815
+    #define ADC_ANGLE_292_5 3154
+    #define ADC_ANGLE_315_0 3467
+    #define ADC_ANGLE_337_5 2618
 
     #define ADC_RESOLUTION 12
 
 String getWindDirectionLabel(float windDirection) {
-    if (windDirection == 0.0) return "N"; 
-    else if (windDirection == 22.5) return "NNO";
-    else if (windDirection == 45.0) return "NO";
-    else if (windDirection == 67.5) return "ONO";
-    else if (windDirection == 90.0) return "O";
-    else if (windDirection == 112.5) return "OSO";
-    else if (windDirection == 135.0) return "SO";
-    else if (windDirection == 157.5) return "SSO";
+    if (windDirection == 0.0) return "N";
+    else if (windDirection == 22.5) return "NNE"; 
+    else if (windDirection == 45.0) return "NE";
+    else if (windDirection == 67.5) return "ENE";
+    else if (windDirection == 90.0) return "E";
+    else if (windDirection == 112.5) return "ESE";
+    else if (windDirection == 135.0) return "SE";
+    else if (windDirection == 157.5) return "SSE";
     else if (windDirection == 180.0) return "S";
     else if (windDirection == 202.5) return "SSW";
     else if (windDirection == 225.0) return "SW";
@@ -179,8 +181,10 @@ void measureRain() {
 
 }
 
+
 float measureWindDirection(){
-  // Read the wind vane ADC value
+
+    // Read the wind vane ADC value
   int adcValue = analogRead(windVanePin);
 
   // ADC values for each wind direction (V(Wind Vane) / 3.3V * 4095)
@@ -234,14 +238,14 @@ void prepareTxFrame(uint8_t port)
     delay(loRaWANHandler.getSendDelay());
   }
 
-  float voltage = batteryHandler.getBatteryVoltage();
+/*   float voltage = batteryHandler.getBatteryVoltage();
   ALOG_D("Battery voltage: %.2fV", voltage);
   voltage -= 2;
   voltage *= 100;
   uint8_t voltageInt = (uint8_t)voltage;
-  ALOG_D("Voltage Data: %d", voltageInt);
+  ALOG_D("Voltage Data: %d", voltageInt); */
 
-  // BME280 Sensorwerte auslesen
+  // Read BME280 sensor data
   temperature = bme.readTemperature();
   humidity = bme.readHumidity();
   pressure = bme.readPressure() / 100.0F;
@@ -250,22 +254,20 @@ void prepareTxFrame(uint8_t port)
   ALOG_D("Humidity: %.2f %%", humidity);
   ALOG_D("Pressure: %.2f hPa", pressure);
 
-  // Temperatur in Integer umrechnen (offset +5000 für Vorzeichenkorrektur)
+  // Calculate temperature in 0.01°C steps and add offset because of negative values
   int16_t tempInt = (int16_t)((temperature * 100) + 5000);
   
-  // Luftdruck in Integer umrechnen (in 0.1 hPa)
+  // Calculate air pressure in 0.1 hPa steps
   uint16_t pressureInt = (uint16_t)(pressure * 10);
 
-  // Luftfeuchtigkeit in 0.5%-Schritten kodieren
+  // Calculate humidity in 0.5% steps
   uint8_t humInt = (uint8_t)(humidity * 2);
   ALOG_D("Humidity value (scaled): %.2f, Humidity byte: %d", humidity, humInt);
 
-  // Windgeschwindigkeit messen
   measureWind();
   uint16_t windInt = (uint16_t)(windspeed * 10);
 
   measureRain();
-  // Regenmenge in Integer umrechnen (in 0.1 mm)
   uint16_t rainInt = (uint16_t)(rainAmount * 10);
   uint16_t hourlyRainInt = (uint16_t)(hourlyRainAmount * 10);
 
@@ -275,31 +277,30 @@ void prepareTxFrame(uint8_t port)
 
   uint16_t windDirectionInt = (uint16_t)(windDirection / 22.5);
   ALOG_D("Wind Direction Int: %d", windDirectionInt);
-    
-
+ 
 
   // LoRaWAN-Frame aufbauen
-  appDataSize = 17; // Größe wird auf 8 Bytes gesetzt
+  appDataSize = 16; // Größe wird auf 8 Bytes gesetzt
   appData[0] = 0x5A;                   // Preamble
   appData[1] = 0x01;                   // Sensorstatus
-  appData[2] = voltageInt;             // Batteriespannung
-  appData[3] = (tempInt >> 8) & 0xFF;  // Temperatur MSB
-  appData[4] = tempInt & 0xFF;         // Temperatur LSB
-  appData[5] = humInt;                 // Luftfeuchtigkeit
-  appData[6] = (pressureInt >> 8) & 0xFF; // Luftdruck MSB
-  appData[7] = pressureInt & 0xFF;     // Luftdruck LSB
-  appData[8] = (windInt >> 8) & 0xFF;  // Windgeschwindigkeit MSB
-  appData[9] = windInt & 0xFF;         // Windgeschwindigkeit LSB
-  appData[10] = (rainInt >> 8) & 0xFF; // Regenmenge MSB
-  appData[11] = rainInt & 0xFF;        // Regenmenge LSB
-  appData[12] = (hourlyRainInt >> 8) & 0xFF; // stündliche Regenmenge MSB
-  appData[13] = hourlyRainInt & 0xFF;        // stündliche Regenmenge LSB
-  appData[14] = (windDirectionInt >> 8) & 0xFF; // Windrichtung MSB
-  appData[15] = windDirectionInt & 0xFF;        // Windrichtung LSB
+  //appData[2] = voltageInt;             // Batteriespannung
+  appData[2] = (tempInt >> 8) & 0xFF;  // Temperatur MSB
+  appData[3] = tempInt & 0xFF;         // Temperatur LSB
+  appData[4] = humInt;                 // Luftfeuchtigkeit
+  appData[5] = (pressureInt >> 8) & 0xFF; // Luftdruck MSB
+  appData[6] = pressureInt & 0xFF;     // Luftdruck LSB
+  appData[7] = (windInt >> 8) & 0xFF;  // Windgeschwindigkeit MSB
+  appData[8] = windInt & 0xFF;         // Windgeschwindigkeit LSB
+  appData[9] = (rainInt >> 8) & 0xFF; // Regenmenge MSB
+  appData[10] = rainInt & 0xFF;        // Regenmenge LSB
+  appData[11] = (hourlyRainInt >> 8) & 0xFF; // stündliche Regenmenge MSB
+  appData[12] = hourlyRainInt & 0xFF;        // stündliche Regenmenge LSB
+  appData[13] = (windDirectionInt >> 8) & 0xFF; // Windrichtung MSB
+  appData[14] = windDirectionInt & 0xFF;        // Windrichtung LSB
 
 
   // CRC8 über die ersten 7 Bytes berechnen und ans Ende schreiben
-  appData[16] = crc8_le(0, appData, 8);
+  appData[15] = crc8_le(0, appData, 8);
 
   /*
   // Ausgabe der Frame-Daten
@@ -324,8 +325,7 @@ void setup()
   pinMode(anemoPin, INPUT_PULLUP);
   pinMode(rainPin, INPUT_PULLUP);
   pinMode(windVanePin, INPUT);
-  analogReadResolution(ADC_RESOLUTION);
-  analogSetAttenuation(ADC_0db);
+  
 
   attachInterrupt(digitalPinToInterrupt(rainPin), rainCounter, FALLING);
 
@@ -345,7 +345,7 @@ void setup()
     ALOG_D("BME280 erfolgreich initialisiert.");
   }
 
-  batteryHandler.setup();
+  //batteryHandler.setup();
   loRaWANHandler.setup();
 }
 
