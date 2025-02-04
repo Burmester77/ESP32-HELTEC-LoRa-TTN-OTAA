@@ -15,7 +15,7 @@
  */
 #include <Arduino.h>
 #include <LoRaWANHandler.hpp>
-//#include <BatteryHandler.hpp>
+#include <BatteryHandler.hpp>
 #include <rom/crc.h>
 #include <alog.h>
 #include <Wire.h>
@@ -38,12 +38,14 @@ float pressure = 0.0;           // Airpressure in hPa
 volatile int windCnt = 0;       // Counter for wind impulses
 float windspeed;                // Windspeed km/h
 RTC_DATA_ATTR volatile int rainCnt = 0;       // Counter for rain impulses
-RTC_DATA_ATTR unsigned long lastRainReset = 0; // Time of last rain reset
-RTC_DATA_ATTR float hourlyRainAmount = 0.0;          // hourly rain amount in mm 
+RTC_DATA_ATTR float hourlyRainAmount = 0.0;          // hourly rain amount in mm
+RTC_DATA_ATTR unsigned long lastHourlyRainReset = 0; // Time of last rain reset
+RTC_DATA_ATTR float dailyRainAmount = 0.0;          // daily rain amount in mm
+RTC_DATA_ATTR unsigned long lastDailyRainReset = 0; // Time of last rain reset
 RTC_DATA_ATTR float rainAmount = 0.0;          // measured rain amount in mm
 unsigned long lastRainTipTime = 0; // Time of last rain tip
 const unsigned long debounceInterval = 100; // Debounce interval for rain gauge
-int adcValue; // ADC value for wind direction
+int adcValueWindVane; // ADC value for wind direction
 float windDirection; // Wind direction in degrees
 
 // I2C1-Pins (alternative pins for I2C1 because I2C0 is used by Display)
@@ -169,15 +171,21 @@ void measureRain() {
 
   rainAmount = (float)rainCnt * 0.2794;
   hourlyRainAmount += rainAmount;
-  ALOG_D("Regenimpulse: %d, Regenmenge: %.2f mm, stündl.Regen: %.2f mm", rainCnt, rainAmount, hourlyRainAmount);
+  dailyRainAmount += rainAmount;
+  ALOG_D("Regenimpulse: %d, Regenmenge: %.2f mm, stündl.Regen: %.2f mm, tägl.Regen: %.2f" , rainCnt, rainAmount, hourlyRainAmount, dailyRainAmount);
   rainCnt = 0;
-
-
+  
   unsigned long currentMillis = millis();
-  if (currentMillis - lastRainReset > 3600000) {
+
+  if (currentMillis - lastHourlyRainReset > 3600000) {
     hourlyRainAmount = 0.0;
-    lastRainReset = currentMillis;
+    lastHourlyRainReset = currentMillis;
   }
+  if (currentMillis - lastDailyRainReset > 86400000) {
+    dailyRainAmount = 0.0;
+    lastDailyRainReset = currentMillis;
+  }
+
 
 }
 
@@ -185,10 +193,10 @@ void measureRain() {
 float measureWindDirection(){
 
     // Read the wind vane ADC value
-  int adcValue = analogRead(windVanePin);
+  int adcValueWindVane = analogRead(windVanePin);
 
   // ADC values for each wind direction (V(Wind Vane) / 3.3V * 4095)
-    int adcValues[NUM_ANGLES] = {
+    int adcValuesPerAngle[NUM_ANGLES] = {
         ADC_ANGLE_0_0, ADC_ANGLE_22_5, ADC_ANGLE_45_0, ADC_ANGLE_67_5,
         ADC_ANGLE_90_0, ADC_ANGLE_112_5, ADC_ANGLE_135_0, ADC_ANGLE_157_5,
         ADC_ANGLE_180_0, ADC_ANGLE_202_5, ADC_ANGLE_225_0, ADC_ANGLE_247_5,
@@ -202,11 +210,11 @@ float measureWindDirection(){
 
     // Find the closest ADC value to the measured value
     int closestIndex = 0;
-    int minDifference = abs(adcValue - adcValues[0]);
+    int minDifference = abs(adcValueWindVane - adcValuesPerAngle[0]);
 
     // Iterate through all ADC values and find the closest match
     for (int i = 1; i < NUM_ANGLES; i++) {
-        int difference = abs(adcValue - adcValues[i]);
+        int difference = abs(adcValueWindVane - adcValuesPerAngle[i]);
         // If the difference is smaller than the current minimum difference, update the minimum difference and the closest index
         if (difference < minDifference) {
             minDifference = difference;
@@ -215,10 +223,11 @@ float measureWindDirection(){
     }
 
     float windDirection = windAngles[closestIndex];
-    ALOG_D("ADC Value: %d, Closest Match: %d, Wind Direction: %.1f°", adcValue, adcValues[closestIndex], windDirection);
+    ALOG_D("ADC Value: %d, Closest Match: %d, Wind Direction: %.1f°", adcValueWindVane, adcValuesPerAngle[closestIndex], windDirection);
 
     return windDirection;
 }
+
 
 /**
  * @brief Prepares the transmission frame for LoRaWAN.
@@ -238,12 +247,11 @@ void prepareTxFrame(uint8_t port)
     delay(loRaWANHandler.getSendDelay());
   }
 
-/*   float voltage = batteryHandler.getBatteryVoltage();
+  float voltage = batteryHandler.getBatteryVoltage();
   ALOG_D("Battery voltage: %.2fV", voltage);
-  voltage -= 2;
-  voltage *= 100;
-  uint8_t voltageInt = (uint8_t)voltage;
-  ALOG_D("Voltage Data: %d", voltageInt); */
+  // Calculate battery voltage in mV
+  uint16_t voltageInt = (uint16_t)(voltage * 1000);
+  ALOG_D("Battery voltage (scaled): %.2f, Battery voltage byte: %d", voltage, voltageInt);
 
   // Read BME280 sensor data
   temperature = bme.readTemperature();
@@ -268,7 +276,7 @@ void prepareTxFrame(uint8_t port)
   uint16_t windInt = (uint16_t)(windspeed * 10);
 
   measureRain();
-  uint16_t rainInt = (uint16_t)(rainAmount * 10);
+  uint16_t dailyRainInt = (uint16_t)(dailyRainAmount * 10);
   uint16_t hourlyRainInt = (uint16_t)(hourlyRainAmount * 10);
 
   float windDirection = measureWindDirection();
@@ -279,37 +287,29 @@ void prepareTxFrame(uint8_t port)
   ALOG_D("Wind Direction Int: %d", windDirectionInt);
  
 
-  // LoRaWAN-Frame aufbauen
-  appDataSize = 16; // Größe wird auf 8 Bytes gesetzt
-  appData[0] = 0x5A;                   // Preamble
-  appData[1] = 0x01;                   // Sensorstatus
-  //appData[2] = voltageInt;             // Batteriespannung
-  appData[2] = (tempInt >> 8) & 0xFF;  // Temperatur MSB
-  appData[3] = tempInt & 0xFF;         // Temperatur LSB
-  appData[4] = humInt;                 // Luftfeuchtigkeit
-  appData[5] = (pressureInt >> 8) & 0xFF; // Luftdruck MSB
-  appData[6] = pressureInt & 0xFF;     // Luftdruck LSB
-  appData[7] = (windInt >> 8) & 0xFF;  // Windgeschwindigkeit MSB
-  appData[8] = windInt & 0xFF;         // Windgeschwindigkeit LSB
-  appData[9] = (rainInt >> 8) & 0xFF; // Regenmenge MSB
-  appData[10] = rainInt & 0xFF;        // Regenmenge LSB
-  appData[11] = (hourlyRainInt >> 8) & 0xFF; // stündliche Regenmenge MSB
-  appData[12] = hourlyRainInt & 0xFF;        // stündliche Regenmenge LSB
-  appData[13] = (windDirectionInt >> 8) & 0xFF; // Windrichtung MSB
-  appData[14] = windDirectionInt & 0xFF;        // Windrichtung LSB
+  // Build LoRaWAN data frame
+  appDataSize = 18; // Size set to 18 bytes
+  appData[0] = 0x5A;
+  appData[1] = 0x01;
+  appData[2] = (tempInt >> 8) & 0xFF;
+  appData[3] = tempInt & 0xFF;
+  appData[4] = humInt;
+  appData[5] = (pressureInt >> 8) & 0xFF;
+  appData[6] = pressureInt & 0xFF;
+  appData[7] = (windInt >> 8) & 0xFF;
+  appData[8] = windInt & 0xFF;
+  appData[9] = (dailyRainInt >> 8) & 0xFF;
+  appData[10] = dailyRainInt & 0xFF;
+  appData[11] = (hourlyRainInt >> 8) & 0xFF;
+  appData[12] = hourlyRainInt & 0xFF;
+  appData[13] = (windDirectionInt >> 8) & 0xFF;
+  appData[14] = windDirectionInt & 0xFF;
+  appData[15] = (voltageInt >> 8) & 0xFF;
+  appData[16] = voltageInt & 0xFF;
 
+  // CRC8 for the first 17 bytes
+  appData[17] = crc8_le(0, appData, 8);
 
-  // CRC8 über die ersten 7 Bytes berechnen und ans Ende schreiben
-  appData[15] = crc8_le(0, appData, 8);
-
-  /*
-  // Ausgabe der Frame-Daten
-  ALOG_D("LoRaWAN Frame Data:");
-  for (uint8_t i = 0; i < appDataSize + 1; i++) // +1 für CRC8
-  {
-    ALOG_D("Byte %d: 0x%02X", i, appData[i]);
-  }
-  */
 }
 
 /**
@@ -320,7 +320,7 @@ void prepareTxFrame(uint8_t port)
  */
 void setup()
 {
-  // I2C1 für den BME280 initialisieren
+  // Initialize Wire1 for I2C1 (alternative pins) and configure sensor pins
   Wire1.begin(SDA_I2C1, SCL_I2C1);
   pinMode(anemoPin, INPUT_PULLUP);
   pinMode(rainPin, INPUT_PULLUP);
@@ -332,20 +332,26 @@ void setup()
   // Configure external wakeup on rain gauge pin (GPIO_NUM_7)
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_7, 0);
 
+  // Wake up if rain gauge is active and the device was not powered on to provide false counts
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
-    if (digitalRead(rainPin) == LOW) {  // Regenmesser ist noch LOW?
-      rainCnt++;  // Ersten Impuls nach dem Wake-Up mitzählen
+    // Wake up due to rain gauge
+    if (esp_reset_reason() != ESP_RST_POWERON) {
+      // Device was powered on, ignore rain gauge wakeup
+      delay(50); // Debounce to avoid multiple wakeups
+      if (digitalRead(rainPin) == LOW) {  // Check if rain gauge is active
+      rainCnt++;  // Count first tip after wakeup
+      }
     }
   }
 
-  // BME280 initialisieren
+  // Initialize BME280 sensor
   if (!bme.begin(0x76, &Wire1)) {
     ALOG_E("BME280 nicht gefunden. Starte ohne Sensorwerte.");
   } else {
     ALOG_D("BME280 erfolgreich initialisiert.");
   }
 
-  //batteryHandler.setup();
+  batteryHandler.setup();
   loRaWANHandler.setup();
 }
 

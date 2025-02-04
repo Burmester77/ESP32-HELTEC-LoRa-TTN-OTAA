@@ -7,13 +7,10 @@ function decodeUplink(input) {
   data.humidity = (input.bytes[4]) / 2.0;
   data.pressure = ((input.bytes[5] << 8) | input.bytes[6]) / 10.0;
   data.windSpeed = ((input.bytes[7] << 8) | input.bytes[8]) / 10;
-  data.rainfall = ((input.bytes[9] << 8) | input.bytes[10]) / 10;
+  data.dailyRainfall = ((input.bytes[9] << 8) | input.bytes[10]) / 10;
   data.hourlyRainfall = ((input.bytes[11] << 8) | input.bytes[12]) / 10;
 
-  data.crc8le = input.bytes[15];
-
   // Calculate Wind Direction
-   // Dekodierung der Windrichtung (2 Bytes: [14] und [15])
    var windDirectionInt = ((input.bytes[13] << 8) | input.bytes[14]);
    var windDirectionDeg = windDirectionInt * 22.5;
  
@@ -38,14 +35,23 @@ function decodeUplink(input) {
    else windDirection = "Unknown";
  
    data.windDirection = windDirection; // Windrichtung als String (N, NNO, NO, etc.)
+
+   data.batteryVoltage = ((input.bytes[15] << 8) | input.bytes[16]) / 1000.0;
+
  
   // 100% battery is 4.1V
   // 0% battery is 3.0V
-  //var battery = data.batteryVoltage;
-  //if ( battery > 4.1 ) {
-  //  battery = 4.1;
-  //}
-  //data.batteryPercentage = Math.round((battery - 3.0) / (4.1 - 3.0) * 100.0);
+  var battery = data.batteryVoltage;
+  if ( battery > 4.1 ) {
+    battery = 4.1;
+  }
+  if ( battery < 3.0 ) {
+    battery = 3.0;
+  }
+  data.batteryPercentage = Math.round((battery - 3.0) / (4.1 - 3.0) * 100.0);
+
+  data.crc8le = input.bytes[17];
+
 
   return {
     data: data,
