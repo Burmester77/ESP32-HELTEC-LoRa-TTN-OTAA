@@ -141,13 +141,14 @@ They are permanently stored in the device's non-volatile memory.
 
 */
 
-// Anemometer Interrupt-Routine
+///////////////////////////////////////////// Wind speed calculation //////////////////////////////////////////////
+// Anemometer ISR
 void windCounter(){
   windCnt++;
 }
 
 // Function to measure the wind speed
-void measureWind() {
+void getWindSpeed() {
   attachInterrupt(digitalPinToInterrupt(anemoPin), windCounter , FALLING);
   delay(3000); // 3 Sekunden messen
   detachInterrupt(anemoPin);
@@ -157,6 +158,7 @@ void measureWind() {
     windCnt = 0;
   }
 
+///////////////////////////////////////////// Rain gauge calculation //////////////////////////////////////////////
 // Function to count the rain tips 
 void IRAM_ATTR rainCounter(){
     unsigned long currentTime = millis();
@@ -167,7 +169,7 @@ void IRAM_ATTR rainCounter(){
 }
 
 // Function to measure the rain amount
-void measureRain() {
+void getRainAmount() {
 
   rainAmount = (float)rainCnt * 0.2794;
   hourlyRainAmount += rainAmount;
@@ -185,12 +187,11 @@ void measureRain() {
     dailyRainAmount = 0.0;
     lastDailyRainReset = currentMillis;
   }
-
-
 }
 
+///////////////////////////////////////////// Wind direction calculation //////////////////////////////////////////////
 
-float measureWindDirection(){
+float getWindDirection(){
 
     // Read the wind vane ADC value
   int adcValueWindVane = analogRead(windVanePin);
@@ -272,14 +273,14 @@ void prepareTxFrame(uint8_t port)
   uint8_t humInt = (uint8_t)(humidity * 2);
   ALOG_D("Humidity value (scaled): %.2f, Humidity byte: %d", humidity, humInt);
 
-  measureWind();
+  getWindSpeed();
   uint16_t windInt = (uint16_t)(windspeed * 10);
 
-  measureRain();
+  getRainAmount();
   uint16_t dailyRainInt = (uint16_t)(dailyRainAmount * 10);
   uint16_t hourlyRainInt = (uint16_t)(hourlyRainAmount * 10);
 
-  float windDirection = measureWindDirection();
+  float windDirection = getWindDirection();
   String windDirectionLabel = getWindDirectionLabel(windDirection);
   ALOG_D("Wind Direction: %.1f°, %s", windDirection, windDirectionLabel.c_str());
 
