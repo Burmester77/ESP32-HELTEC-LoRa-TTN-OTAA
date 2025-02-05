@@ -27,6 +27,7 @@
 #define anemoPin 47
 #define rainPin 7
 #define windVanePin 4
+#define lightPin 5
 
 // BME280 Sensor object initialisation
 Adafruit_BME280 bme;
@@ -47,6 +48,7 @@ unsigned long lastRainTipTime = 0; // Time of last rain tip
 const unsigned long debounceInterval = 100; // Debounce interval for rain gauge
 int adcValueWindVane; // ADC value for wind direction
 float windDirection; // Wind direction in degrees
+int adcValueLightIntensity; // Light intensity
 
 // I2C1-Pins (alternative pins for I2C1 because I2C0 is used by Display)
 static const uint8_t SDA_I2C1 = 45;
@@ -159,7 +161,8 @@ void getWindSpeed() {
   }
 
 ///////////////////////////////////////////// Rain gauge calculation //////////////////////////////////////////////
-// Function to count the rain tips 
+// Function to count the rain tips
+// IRAM_ATTR is used to place the function in IRAM, to make it available during deep sleep
 void IRAM_ATTR rainCounter(){
     unsigned long currentTime = millis();
   if (currentTime - lastRainTipTime > debounceInterval) {
@@ -229,6 +232,13 @@ float getWindDirection(){
     return windDirection;
 }
 
+///////////////////////////////////////////// Light Sensor //////////////////////////////////////////////
+
+// Function to measure the light intensity
+int getLightIntensity() {
+  return analogRead(lightPin);
+}
+
 
 /**
  * @brief Prepares the transmission frame for LoRaWAN.
@@ -286,10 +296,13 @@ void prepareTxFrame(uint8_t port)
 
   uint16_t windDirectionInt = (uint16_t)(windDirection / 22.5);
   ALOG_D("Wind Direction Int: %d", windDirectionInt);
- 
+
+  int adcValueLightIntensity = getLightIntensity();
+  uint8_t lightInt = (uint8_t)(adcValueLightIntensity * 255 / 4095);
+  ALOG_D("ADC Value Light: %d", adcValueLightIntensity); 
 
   // Build LoRaWAN data frame
-  appDataSize = 18; // Size set to 18 bytes
+  appDataSize = 19; // Size set to 18 bytes
   appData[0] = 0x5A;
   appData[1] = 0x01;
   appData[2] = (tempInt >> 8) & 0xFF;
@@ -307,9 +320,10 @@ void prepareTxFrame(uint8_t port)
   appData[14] = windDirectionInt & 0xFF;
   appData[15] = (voltageInt >> 8) & 0xFF;
   appData[16] = voltageInt & 0xFF;
+  appData[17] = lightInt;
 
   // CRC8 for the first 17 bytes
-  appData[17] = crc8_le(0, appData, 8);
+  appData[18] = crc8_le(0, appData, 8);
 
 }
 
@@ -326,6 +340,7 @@ void setup()
   pinMode(anemoPin, INPUT_PULLUP);
   pinMode(rainPin, INPUT_PULLUP);
   pinMode(windVanePin, INPUT);
+  analogSetPinAttenuation(lightPin, ADC_11db);
   
 
   attachInterrupt(digitalPinToInterrupt(rainPin), rainCounter, FALLING);
@@ -351,6 +366,7 @@ void setup()
   } else {
     ALOG_D("BME280 erfolgreich initialisiert.");
   }
+
 
   batteryHandler.setup();
   loRaWANHandler.setup();

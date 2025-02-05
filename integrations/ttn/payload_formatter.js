@@ -50,7 +50,22 @@ function decodeUplink(input) {
   }
   data.batteryPercentage = Math.round((battery - 3.0) / (4.1 - 3.0) * 100.0);
 
-  data.crc8le = input.bytes[17];
+  var lightIntensityByte = input.bytes[17]; // 0–255
+  var analogValue = Math.round((lightIntensityByte * 4095) / 255); // Rückskalierung
+
+  // Qualitative Bewertung
+  var lightLevel = "";
+  if (analogValue < 40) lightLevel = "Dark";
+  else if (analogValue < 800) lightLevel = "Dim";
+  else if (analogValue < 2000) lightLevel = "Light";
+  else if (analogValue < 3200) lightLevel = "Bright";
+  else lightLevel = "Very bright";
+  
+
+  data.lightIntensityLevel = lightLevel;
+  data.lightIntensityAnalogValue = analogValue;
+
+  data.crc8le = input.bytes[18];
 
 
   return {

@@ -41,6 +41,7 @@ void BatteryHandler::setup()
 {
   pinMode(ADC_Ctrl, OUTPUT);
   analogSetClockDiv(1);
+  // set the attenuation for the exact pin so it's not global (usage of other pins is not affected - wind vane)
   analogSetPinAttenuation(ADC_Input, ADC_atenuation);
   adcAttachPin(ADC_Input);
   digitalWrite(ADC_Ctrl, ADC_active);
