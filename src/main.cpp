@@ -51,8 +51,8 @@ float windDirection; // Wind direction in degrees
 int adcValueLightIntensity; // Light intensity
 
 // I2C1-Pins (alternative pins for I2C1 because I2C0 is used by Display)
-static const uint8_t SDA_I2C1 = 45;
-static const uint8_t SCL_I2C1 = 46;
+static const uint8_t SDA_I2C1 = 46;
+static const uint8_t SCL_I2C1 = 45;
 
 // Wind direction
 // Enum to define the indexes for each wind direction
