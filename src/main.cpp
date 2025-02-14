@@ -16,6 +16,7 @@
 #include <Arduino.h>
 #include <LoRaWANHandler.hpp>
 #include <BatteryHandler.hpp>
+#include <RainHandler.hpp>
 #include <rom/crc.h>
 #include <alog.h>
 #include <Wire.h>
@@ -25,7 +26,6 @@
 
 // Sensor-Pins
 #define anemoPin 47
-#define rainPin 7
 #define windVanePin 4
 #define lightPin 5
 
@@ -38,14 +38,7 @@ float humidity = 0.0;           // Humidity in %
 float pressure = 0.0;           // Airpressure in hPa 
 volatile int windCnt = 0;       // Counter for wind impulses
 float windspeed;                // Windspeed km/h
-RTC_DATA_ATTR volatile int rainCnt = 0;       // Counter for rain impulses
-RTC_DATA_ATTR float hourlyRainAmount = 0.0;          // hourly rain amount in mm
-RTC_DATA_ATTR unsigned long lastHourlyRainReset = 0; // Time of last rain reset
-RTC_DATA_ATTR float dailyRainAmount = 0.0;          // daily rain amount in mm
-RTC_DATA_ATTR unsigned long lastDailyRainReset = 0; // Time of last rain reset
 RTC_DATA_ATTR float rainAmount = 0.0;          // measured rain amount in mm
-unsigned long lastRainTipTime = 0; // Time of last rain tip
-const unsigned long debounceInterval = 100; // Debounce interval for rain gauge
 int adcValueWindVane; // ADC value for wind direction
 float windDirection; // Wind direction in degrees
 int adcValueLightIntensity; // Light intensity
@@ -160,37 +153,12 @@ void getWindSpeed() {
     windCnt = 0;
   }
 
-///////////////////////////////////////////// Rain gauge calculation //////////////////////////////////////////////
-// Function to count the rain tips
-// IRAM_ATTR is used to place the function in IRAM, to make it available during deep sleep
-void IRAM_ATTR rainCounter(){
-    unsigned long currentTime = millis();
-  if (currentTime - lastRainTipTime > debounceInterval) {
-    rainCnt++;
-    lastRainTipTime = currentTime;
-  }
-}
 
-// Function to measure the rain amount
+/* // Function to measure the rain amount
 void getRainAmount() {
-
-  rainAmount = (float)rainCnt * 0.2794;
-  hourlyRainAmount += rainAmount;
-  dailyRainAmount += rainAmount;
-  ALOG_D("Regenimpulse: %d, Regenmenge: %.2f mm, stündl.Regen: %.2f mm, tägl.Regen: %.2f" , rainCnt, rainAmount, hourlyRainAmount, dailyRainAmount);
+  rainAmount = (float)rainCnt * 0.2794; // 0.2794 mm per tip
   rainCnt = 0;
-  
-  unsigned long currentMillis = millis();
-
-  if (currentMillis - lastHourlyRainReset > 3600000) {
-    hourlyRainAmount = 0.0;
-    lastHourlyRainReset = currentMillis;
-  }
-  if (currentMillis - lastDailyRainReset > 86400000) {
-    dailyRainAmount = 0.0;
-    lastDailyRainReset = currentMillis;
-  }
-}
+} */
 
 ///////////////////////////////////////////// Wind direction calculation //////////////////////////////////////////////
 
@@ -258,6 +226,8 @@ void prepareTxFrame(uint8_t port)
     delay(loRaWANHandler.getSendDelay());
   }
 
+  ALOG_D("Wake up reason: %d", esp_sleep_get_wakeup_cause());
+
   float voltage = batteryHandler.getBatteryVoltage();
   ALOG_D("Battery voltage: %.2fV", voltage);
   // Calculate battery voltage in mV
@@ -286,9 +256,9 @@ void prepareTxFrame(uint8_t port)
   getWindSpeed();
   uint16_t windInt = (uint16_t)(windspeed * 10);
 
-  getRainAmount();
-  uint16_t dailyRainInt = (uint16_t)(dailyRainAmount * 10);
-  uint16_t hourlyRainInt = (uint16_t)(hourlyRainAmount * 10);
+  rainAmount = (rainHandler.getRainCnt()) * 0.2794; // 0.2794 mm per tip
+  uint16_t rainAmountInt = (uint16_t)(rainAmount * 10);
+  ALOG_D("Rain amount: %.2f mm", rainAmount);
 
   float windDirection = getWindDirection();
   String windDirectionLabel = getWindDirectionLabel(windDirection);
@@ -302,7 +272,7 @@ void prepareTxFrame(uint8_t port)
   ALOG_D("ADC Value Light: %d", adcValueLightIntensity); 
 
   // Build LoRaWAN data frame
-  appDataSize = 19; // Size set to 18 bytes
+  appDataSize = 17; // Size set to 18 bytes
   appData[0] = 0x5A;
   appData[1] = 0x01;
   appData[2] = (tempInt >> 8) & 0xFF;
@@ -312,18 +282,16 @@ void prepareTxFrame(uint8_t port)
   appData[6] = pressureInt & 0xFF;
   appData[7] = (windInt >> 8) & 0xFF;
   appData[8] = windInt & 0xFF;
-  appData[9] = (dailyRainInt >> 8) & 0xFF;
-  appData[10] = dailyRainInt & 0xFF;
-  appData[11] = (hourlyRainInt >> 8) & 0xFF;
-  appData[12] = hourlyRainInt & 0xFF;
-  appData[13] = (windDirectionInt >> 8) & 0xFF;
-  appData[14] = windDirectionInt & 0xFF;
-  appData[15] = (voltageInt >> 8) & 0xFF;
-  appData[16] = voltageInt & 0xFF;
-  appData[17] = lightInt;
+  appData[9] = (rainAmountInt >> 8) & 0xFF;
+  appData[10] = rainAmountInt & 0xFF;
+  appData[11] = (windDirectionInt >> 8) & 0xFF;
+  appData[12] = windDirectionInt & 0xFF;
+  appData[13] = (voltageInt >> 8) & 0xFF;
+  appData[14] = voltageInt & 0xFF;
+  appData[15] = lightInt;
 
   // CRC8 for the first 17 bytes
-  appData[18] = crc8_le(0, appData, 8);
+  appData[16] = crc8_le(0, appData, 8);
 
 }
 
@@ -338,27 +306,8 @@ void setup()
   // Initialize Wire1 for I2C1 (alternative pins) and configure sensor pins
   Wire1.begin(SDA_I2C1, SCL_I2C1);
   pinMode(anemoPin, INPUT_PULLUP);
-  pinMode(rainPin, INPUT_PULLUP);
   pinMode(windVanePin, INPUT);
   analogSetPinAttenuation(lightPin, ADC_11db);
-  
-
-  attachInterrupt(digitalPinToInterrupt(rainPin), rainCounter, FALLING);
-
-  // Configure external wakeup on rain gauge pin (GPIO_NUM_7)
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_7, 0);
-
-  // Wake up if rain gauge is active and the device was not powered on to provide false counts
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
-    // Wake up due to rain gauge
-    if (esp_reset_reason() != ESP_RST_POWERON) {
-      // Device was powered on, ignore rain gauge wakeup
-      delay(50); // Debounce to avoid multiple wakeups
-      if (digitalRead(rainPin) == LOW) {  // Check if rain gauge is active
-      rainCnt++;  // Count first tip after wakeup
-      }
-    }
-  }
 
   // Initialize BME280 sensor
   if (!bme.begin(0x76, &Wire1)) {
@@ -370,6 +319,7 @@ void setup()
 
   batteryHandler.setup();
   loRaWANHandler.setup();
+  rainHandler.setup();
 }
 
 /**

@@ -7,11 +7,10 @@ function decodeUplink(input) {
   data.humidity = (input.bytes[4]) / 2.0;
   data.pressure = ((input.bytes[5] << 8) | input.bytes[6]) / 10.0;
   data.windSpeed = ((input.bytes[7] << 8) | input.bytes[8]) / 10;
-  data.dailyRainfall = ((input.bytes[9] << 8) | input.bytes[10]) / 10;
-  data.hourlyRainfall = ((input.bytes[11] << 8) | input.bytes[12]) / 10;
+  data.rainAmount = ((input.bytes[9] << 8) | input.bytes[10]) / 10;
 
   // Calculate Wind Direction
-   var windDirectionInt = ((input.bytes[13] << 8) | input.bytes[14]);
+   var windDirectionInt = ((input.bytes[11] << 8) | input.bytes[12]);
    var windDirectionDeg = windDirectionInt * 22.5;
  
    // Zuordnung der Windrichtung zu den Himmelsrichtungen
@@ -36,7 +35,7 @@ function decodeUplink(input) {
  
    data.windDirection = windDirection; // Windrichtung als String (N, NNO, NO, etc.)
 
-   data.batteryVoltage = ((input.bytes[15] << 8) | input.bytes[16]) / 1000.0;
+   data.batteryVoltage = ((input.bytes[13] << 8) | input.bytes[14]) / 1000.0;
 
  
   // 100% battery is 4.1V
@@ -50,7 +49,7 @@ function decodeUplink(input) {
   }
   data.batteryPercentage = Math.round((battery - 3.0) / (4.1 - 3.0) * 100.0);
 
-  var lightIntensityByte = input.bytes[17]; // 0–255
+  var lightIntensityByte = input.bytes[15]; // 0–255
   var analogValue = Math.round((lightIntensityByte * 4095) / 255); // Rückskalierung
 
   // Qualitative Bewertung
@@ -65,7 +64,7 @@ function decodeUplink(input) {
   data.lightIntensityLevel = lightLevel;
   data.lightIntensityAnalogValue = analogValue;
 
-  data.crc8le = input.bytes[18];
+  data.crc8le = input.bytes[16];
 
 
   return {

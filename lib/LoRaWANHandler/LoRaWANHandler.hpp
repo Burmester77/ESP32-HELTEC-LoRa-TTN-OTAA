@@ -16,6 +16,8 @@
  */
 #include <Arduino.h>
 
+void IRAM_ATTR rainCounter(); // ISR function for rain impulses
+
 /**
  * @brief Size of the application data.
  */
@@ -43,6 +45,7 @@ class LoRaWANHandler
     uint32_t magic;
     uint32_t sendDelay;
     esp_reset_reason_t resetReason;
+    esp_sleep_wakeup_cause_t wakeupReason;
     bool reconfigure;
 
     void printHex(char *label, uint8_t *buffer, int length);
