@@ -291,47 +291,32 @@ void LoRaWANHandler::loop()
   }
   case DEVICE_STATE_SEND:
   {
-    prepareTxFrame(appPort);
-    if (resetReason == ESP_RST_POWERON || resetReason == ESP_RST_EXT)
-    {
-      LoRaWAN.displaySending();
-    }
-    LoRaWAN.send();
-    deviceState = DEVICE_STATE_CYCLE;
-    break;
-  }
-  case DEVICE_STATE_CYCLE:
-  {
     wakeupReason = esp_sleep_get_wakeup_cause();
+    // Handle external wakeup (rain gauge)
     if (wakeupReason == ESP_SLEEP_WAKEUP_EXT0)
     {
-        // Handle external wakeup (rain gauge)
-        rainHandler.rainCounter();
-        deviceState = DEVICE_STATE_SLEEP;
-        break;
+      rainHandler.handleWakeup();
+      ALOG_D("Rain gauge wakeup");
+      deviceState = DEVICE_STATE_CYCLE;
+      break;
     }
     else if (wakeupReason == ESP_SLEEP_WAKEUP_TIMER)
     {
-        prepareTxFrame(appPort);
-        if (resetReason == ESP_RST_POWERON || resetReason == ESP_RST_EXT)
-          {
-            LoRaWAN.displaySending();
-          }
-        LoRaWAN.send();
-        rainHandler.resetRainCnt(); // Reset rain counter after sending
-        // Set the next wakeup time
-        txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND);
-        LoRaWAN.cycle(txDutyCycleTime);
-        deviceState = DEVICE_STATE_SLEEP;
-        break;
+      prepareTxFrame(appPort);
+      if (resetReason == ESP_RST_POWERON || resetReason == ESP_RST_EXT)
+      {
+        LoRaWAN.displaySending();
+      }
+      LoRaWAN.send();
+      rainHandler.resetRainCnt(); // Reset rain counter after sending
+      deviceState = DEVICE_STATE_CYCLE;
+      break;
     }
-    else
-    {
-        txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND);
-        LoRaWAN.cycle(txDutyCycleTime);
-        deviceState = DEVICE_STATE_SLEEP;
-        break;
-    }    
+}
+  case DEVICE_STATE_CYCLE:
+  {
+    txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND);
+    LoRaWAN.cycle(txDutyCycleTime);
 
     if (resetReason == ESP_RST_POWERON || resetReason == ESP_RST_EXT)
     {
@@ -342,6 +327,7 @@ void LoRaWANHandler::loop()
       display.drawString(display.getWidth() / 2, display.getHeight() / 2, "DEEP SLEEP");
       display.display();
     }
+    deviceState = DEVICE_STATE_SLEEP;
     break;
   }
   case DEVICE_STATE_SLEEP:
