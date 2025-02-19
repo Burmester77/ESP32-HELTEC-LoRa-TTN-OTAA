@@ -279,7 +279,7 @@ void prepareTxFrame(uint8_t port)
   
 
   // Build LoRaWAN data frame
-  appDataSize = 17; // Size set to 18 bytes
+  appDataSize = 18; // Size set to 18 bytes
   appData[0] = 0x5A;
   appData[1] = 0x01;
   appData[2] = (tempInt >> 8) & 0xFF;
@@ -296,9 +296,10 @@ void prepareTxFrame(uint8_t port)
   appData[13] = (voltageInt >> 8) & 0xFF;
   appData[14] = voltageInt & 0xFF;
   appData[15] = lightInt;
+  appData[16] = soilMoistureInt;
 
   // CRC8 for the first 17 bytes
-  appData[16] = crc8_le(0, appData, 8);
+  appData[17] = crc8_le(0, appData, 8);
 
 }
 

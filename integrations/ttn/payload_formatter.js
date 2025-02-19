@@ -13,7 +13,7 @@ function decodeUplink(input) {
    var windDirectionInt = ((input.bytes[11] << 8) | input.bytes[12]);
    var windDirectionDeg = windDirectionInt * 22.5;
  
-   // Zuordnung der Windrichtung zu den Himmelsrichtungen
+   // Degree to direction mapping
    var windDirection = "";
    if (windDirectionDeg === 0.0) windDirection = "N";
    else if (windDirectionDeg === 22.5) windDirection = "NNE";
@@ -33,7 +33,7 @@ function decodeUplink(input) {
    else if (windDirectionDeg === 337.5) windDirection = "NNW";
    else windDirection = "Unknown";
  
-   data.windDirection = windDirection; // Windrichtung als String (N, NNO, NO, etc.)
+   data.windDirection = windDirection; // Winddirection human readable
 
    data.batteryVoltage = ((input.bytes[13] << 8) | input.bytes[14]) / 1000.0;
 
@@ -50,9 +50,9 @@ function decodeUplink(input) {
   data.batteryPercentage = Math.round((battery - 3.0) / (4.1 - 3.0) * 100.0);
 
   var lightIntensityByte = input.bytes[15]; // 0–255
-  var analogValue = Math.round((lightIntensityByte * 4095) / 255); // Rückskalierung
+  var analogValue = Math.round((lightIntensityByte * 4095) / 255); // Scaling
 
-  // Qualitative Bewertung
+  // Light intensity levels
   var lightLevel = "";
   if (analogValue < 40) lightLevel = "Dark";
   else if (analogValue < 800) lightLevel = "Dim";
@@ -64,7 +64,9 @@ function decodeUplink(input) {
   data.lightIntensityLevel = lightLevel;
   data.lightIntensityAnalogValue = analogValue;
 
-  data.crc8le = input.bytes[16];
+  data.soilMoisture = (input.bytes[16]) / 2.0;
+
+  data.crc8le = input.bytes[17];
 
 
   return {
