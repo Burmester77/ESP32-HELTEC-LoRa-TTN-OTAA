@@ -16,7 +16,7 @@
  */
 #include <Arduino.h>
 
-void IRAM_ATTR rainCounter(); // ISR function for rain impulses
+//void IRAM_ATTR rainCounter(); // ISR function for rain impulses
 
 /**
  * @brief Size of the application data.

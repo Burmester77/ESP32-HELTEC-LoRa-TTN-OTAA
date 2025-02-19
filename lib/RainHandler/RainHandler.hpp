@@ -6,7 +6,6 @@
 class RainHandler
 {
   public:
-    
     void setup();
     int getRainCnt();
     void resetRainCnt();

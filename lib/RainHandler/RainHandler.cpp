@@ -22,13 +22,12 @@ void RainHandler::setup(){
   esp_sleep_enable_ext0_wakeup((gpio_num_t)rainPin, 0);
 }
 
-// Function to count the rain tips /////////////////////////////////////////////
-
-
+// Get the rain count ////////////////////////////////////////////////////////////
 int RainHandler::getRainCnt(){
   return rainCnt;
 }
 
+// Reset the rain count ////////////////////////////////////////////////////////////
 void RainHandler::resetRainCnt(){
   rainCnt = 0;
 }

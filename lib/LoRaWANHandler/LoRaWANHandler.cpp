@@ -33,8 +33,7 @@
 #define PREFS_DEV_EUI "devEui"
 #define PREFS_APP_KEY "appKey"
 
-// Define Wakeup Interval of two minutes
-#define WAKEUP_INTERVAL_US 120000000
+
 
 extern SSD1306Wire display;
 
@@ -62,7 +61,7 @@ uint8_t confirmedNbTrials = 4;
 
 RTC_DATA_ATTR uint64_t lastTimerSleep;
 
-static int64_t usTimeLeft = WAKEUP_INTERVAL_US;
+static int64_t usTimeLeft;
 static struct timeval tv;
 
 

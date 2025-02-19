@@ -17,6 +17,7 @@
 #include <LoRaWANHandler.hpp>
 #include <BatteryHandler.hpp>
 #include <RainHandler.hpp>
+#include <SoilMoistureHandler.hpp>
 #include <rom/crc.h>
 #include <alog.h>
 #include <Wire.h>
@@ -270,6 +271,12 @@ void prepareTxFrame(uint8_t port)
   int adcValueLightIntensity = getLightIntensity();
   uint8_t lightInt = (uint8_t)(adcValueLightIntensity * 255 / 4095);
   ALOG_D("ADC Value Light: %d", adcValueLightIntensity); 
+
+  soilMoistureHandler.readData();
+  int soilMoisture = soilMoistureHandler.getMappedMoistureValue();
+  uint8_t soilMoistureInt = (uint8_t)(soilMoisture * 2);
+
+  
 
   // Build LoRaWAN data frame
   appDataSize = 17; // Size set to 18 bytes
