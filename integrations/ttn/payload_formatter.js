@@ -39,16 +39,16 @@ function decodeUplink(input) {
 
  
   // 100% battery is 4.1V
-  // 0% battery is 3.0V
+  // 0% battery is 2.5V
   var battery = data.batteryVoltage;
   if ( battery > 4.1 ) {
     battery = 4.1;
   }
-  if ( battery < 3.0 ) {
-    battery = 3.0;
+  data.batteryPercentage =  Math.round((battery - 2.5) / (4.1 - 2.5) * 100.0);
+  if ( data.batteryPercentage < 0 )
+  {
+    data.batteryPercentage = 0;
   }
-  data.batteryPercentage = Math.round((battery - 3.0) / (4.1 - 3.0) * 100.0);
-
   var lightIntensityByte = input.bytes[15]; // 0–255
   var analogValue = Math.round((lightIntensityByte * 4095) / 255); // Scaling
 
