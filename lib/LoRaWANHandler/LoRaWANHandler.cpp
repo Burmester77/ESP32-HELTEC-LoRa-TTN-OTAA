@@ -33,6 +33,9 @@
 #define PREFS_DEV_EUI "devEui"
 #define PREFS_APP_KEY "appKey"
 
+// Define Wakeup Interval of two minutes
+#define WAKEUP_INTERVAL_US 120000000
+
 extern SSD1306Wire display;
 
 LoRaWANHandler loRaWANHandler;
@@ -56,6 +59,12 @@ bool loraWanAdr = true;
 bool isTxConfirmed = true;
 uint8_t appPort = 2;
 uint8_t confirmedNbTrials = 4;
+
+RTC_DATA_ATTR uint64_t lastTimerSleep;
+
+static int64_t usTimeLeft = WAKEUP_INTERVAL_US;
+static struct timeval tv;
+
 
 // Downlink Handler /////////////////////////////////////////////////////////
 
@@ -224,10 +233,17 @@ void LoRaWANHandler::setSendDelay(uint32_t _sendDelay)
   sendDelay = _sendDelay;
 }
 
+uint64_t now(){
+  gettimeofday(&tv, NULL);
+  return tv.tv_sec *1000000l + tv.tv_usec;
+}
+
 void LoRaWANHandler::setup()
 {
   pinMode(GPIO_NUM_0, INPUT_PULLUP);
   pinMode(Vext, OUTPUT);
+
+  gettimeofday(&tv, NULL);
 
 #ifdef DEVELOPMENT_MODE
   pinMode(LED_BUILTIN, OUTPUT);
@@ -292,23 +308,41 @@ void LoRaWANHandler::loop()
   case DEVICE_STATE_SEND:
   {
     wakeupReason = esp_sleep_get_wakeup_cause();
+
     // Handle external wakeup (rain gauge)
     if (wakeupReason == ESP_SLEEP_WAKEUP_EXT0)
     {
-      rainHandler.handleWakeup();
-      ALOG_D("Rain gauge wakeup");
-      deviceState = DEVICE_STATE_CYCLE;
+      rainHandler.rainCounter();
+      ALOG_D("Wake up by rain gauge");
+      usTimeLeft = (int64_t)(getSleepTime() * 1000) - (int64_t)(now() - lastTimerSleep);
+      if (usTimeLeft <= 0)
+      {
+        usTimeLeft = ((getSleepTime() * 1000) + 5000);
+      }
+      // sleep time left
+      ALOG_D("SleepTime left: %lld ms", usTimeLeft / 1000);
+      esp_sleep_enable_timer_wakeup(usTimeLeft);
+      esp_deep_sleep_start();
       break;
     }
     else if (wakeupReason == ESP_SLEEP_WAKEUP_TIMER)
     {
       prepareTxFrame(appPort);
+      ALOG_D("Wake up by timer");
       if (resetReason == ESP_RST_POWERON || resetReason == ESP_RST_EXT)
       {
         LoRaWAN.displaySending();
       }
       LoRaWAN.send();
       rainHandler.resetRainCnt(); // Reset rain counter after sending
+      lastTimerSleep = now();
+      deviceState = DEVICE_STATE_CYCLE;
+      break;
+    }
+    else
+    {
+      ALOG_D("Wake up by unknown reason");
+      lastTimerSleep = now();
       deviceState = DEVICE_STATE_CYCLE;
       break;
     }

@@ -256,7 +256,7 @@ void prepareTxFrame(uint8_t port)
   getWindSpeed();
   uint16_t windInt = (uint16_t)(windspeed * 10);
 
-  rainAmount = (rainHandler.getRainCnt()) * 0.2794; // 0.2794 mm per tip
+  rainAmount = rainHandler.getRainCnt() * 0.2794; // 0.2794 mm per tip
   uint16_t rainAmountInt = (uint16_t)(rainAmount * 10);
   ALOG_D("Rain amount: %.2f mm", rainAmount);
 

@@ -6,12 +6,11 @@
 class RainHandler
 {
   public:
+    
     void setup();
     int getRainCnt();
     void resetRainCnt();
-    static void IRAM_ATTR rainCounterISR();
-    void rainCounter();
-    void handleWakeup();
+    static void rainCounter();
 };
 
 extern RainHandler rainHandler;
