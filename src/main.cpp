@@ -16,9 +16,12 @@
 #include <Arduino.h>
 #include <LoRaWANHandler.hpp>
 #include <BatteryHandler.hpp>
+#include <BME280Handler.hpp>
 #include <RainHandler.hpp>
 #include <SoilMoistureHandler.hpp>
 #include <SunshineHoursHandler.hpp>
+#include <WindDirectionHandler.hpp>
+#include <WindSpeedHandler.hpp>
 #include <rom/crc.h>
 #include <alog.h>
 #include <Wire.h>
@@ -27,93 +30,16 @@
 #include <esp_sleep.h>
 
 // Sensor-Pins
-#define anemoPin 47
-#define windVanePin 4
 #define lightPin 5
 
-// BME280 Sensor object initialisation
-Adafruit_BME280 bme;
-
 // Globale variables for sensor data
-float temperature = 0.0;        // Temperatur in °C
-float humidity = 0.0;           // Humidity in %
-float pressure = 0.0;           // Airpressure in hPa 
-volatile int windCnt = 0;       // Counter for wind impulses
-float windspeed;                // Windspeed km/h
 RTC_DATA_ATTR float rainAmount = 0.0;          // measured rain amount in mm
-int adcValueWindVane; // ADC value for wind direction
-float windDirection; // Wind direction in degrees
 int adcValueLightIntensity; // Light intensity
 
 // I2C1-Pins (alternative pins for I2C1 because I2C0 is used by Display)
 static const uint8_t SDA_I2C1 = 46;
 static const uint8_t SCL_I2C1 = 45;
 
-// Wind direction
-// Enum to define the indexes for each wind direction
-enum WindVaneAngles
-{
-    ANGLE_0_0 = 0,
-    ANGLE_22_5,
-    ANGLE_45_0,
-    ANGLE_67_5,
-    ANGLE_90_0,
-    ANGLE_112_5,
-    ANGLE_135_0,
-    ANGLE_157_5,
-    ANGLE_180_0,
-    ANGLE_202_5,
-    ANGLE_225_0,
-    ANGLE_247_5,
-    ANGLE_270_0,
-    ANGLE_292_5,
-    ANGLE_315_0,
-    ANGLE_337_5,
-    NUM_ANGLES
-};
-
-// Angle per index of wind vane (360 / 16 = 22.5)
-#define WIND_VANE_DEGREES_PER_INDEX (360.0 / NUM_ANGLES)
-
-    // ADC values for each wind direction (V(Wind Vane) / 3.3V * 4095)
-    #define ADC_ANGLE_0_0 2960
-    #define ADC_ANGLE_22_5 1482
-    #define ADC_ANGLE_45_0 1693
-    #define ADC_ANGLE_67_5 281
-    #define ADC_ANGLE_90_0 310
-    #define ADC_ANGLE_112_5 211
-    #define ADC_ANGLE_135_0 652
-    #define ADC_ANGLE_157_5 439
-    #define ADC_ANGLE_180_0 1036
-    #define ADC_ANGLE_202_5 870
-    #define ADC_ANGLE_225_0 2339
-    #define ADC_ANGLE_247_5 2221
-    #define ADC_ANGLE_270_0 3815
-    #define ADC_ANGLE_292_5 3154
-    #define ADC_ANGLE_315_0 3467
-    #define ADC_ANGLE_337_5 2618
-
-    #define ADC_RESOLUTION 12
-
-String getWindDirectionLabel(float windDirection) {
-    if (windDirection == 0.0) return "N";
-    else if (windDirection == 22.5) return "NNE"; 
-    else if (windDirection == 45.0) return "NE";
-    else if (windDirection == 67.5) return "ENE";
-    else if (windDirection == 90.0) return "E";
-    else if (windDirection == 112.5) return "ESE";
-    else if (windDirection == 135.0) return "SE";
-    else if (windDirection == 157.5) return "SSE";
-    else if (windDirection == 180.0) return "S";
-    else if (windDirection == 202.5) return "SSW";
-    else if (windDirection == 225.0) return "SW";
-    else if (windDirection == 247.5) return "WSW";
-    else if (windDirection == 270.0) return "W";
-    else if (windDirection == 292.5) return "WNW";
-    else if (windDirection == 315.0) return "NW";
-    else if (windDirection == 337.5) return "NNW";
-    else return "Unknown";
-}
 /*
 
 Schedule downlink (FPort 1)
@@ -138,28 +64,8 @@ They are permanently stored in the device's non-volatile memory.
 
 */
 
-///////////////////////////////////////////// Wind speed calculation //////////////////////////////////////////////
-// Anemometer ISR
-void windCounter(){
-  windCnt++;
-}
-
-// Function to measure the wind speed
-void getWindSpeed() {
-  attachInterrupt(digitalPinToInterrupt(anemoPin), windCounter , FALLING);
-  uint32_t startTime = millis();
-  while(millis() - startTime < 10000) {
-  vTaskDelay(10);
-  }
-  detachInterrupt(anemoPin);
-  windspeed = ((float)windCnt / (float)3 * 2.4) / 2;
-  ALOG_D("Impulse: %d, Windspeed: %.2f", windCnt, windspeed);
-
-    windCnt = 0;
-  }
-
 ///////////////////////////////////////////// Wind direction calculation //////////////////////////////////////////////
-
+/* 
 float getWindDirection(){
 
     // Read the wind vane ADC value
@@ -196,7 +102,7 @@ float getWindDirection(){
     ALOG_D("ADC Value: %d, Closest Match: %d, Wind Direction: %.1f°", adcValueWindVane, adcValuesPerAngle[closestIndex], windDirection);
 
     return windDirection;
-}
+} */
 
 ///////////////////////////////////////////// Light Sensor //////////////////////////////////////////////
 
@@ -234,44 +140,44 @@ void prepareTxFrame(uint8_t port)
 
   ALOG_D("Wake up reason: %d", esp_sleep_get_wakeup_cause());
 
+  // Read battery voltage //////////////////////////////////////////////
   float voltage = batteryHandler.getBatteryVoltage();
   ALOG_D("Battery voltage: %.2fV", voltage);
   // Calculate battery voltage in mV
   uint16_t voltageInt = (uint16_t)(voltage * 1000);
   ALOG_D("Battery voltage (scaled): %.2f, Battery voltage byte: %d", voltage, voltageInt);
 
-  // Read BME280 sensor data
-  temperature = bme.readTemperature();
-  humidity = bme.readHumidity();
-  pressure = bme.readPressure() / 100.0F;
+  // Read BME280 sensor data //////////////////////////////////////////////
+  bme280Handler.readData();
+  float temp = bme280Handler.getTemperature();
+  float hum = bme280Handler.getHumidity();
+  float pres = bme280Handler.getPressure();
 
-  ALOG_D("Temperature: %.2f °C", temperature);
-  ALOG_D("Humidity: %.2f %%", humidity);
-  ALOG_D("Pressure: %.2f hPa", pressure);
+  ALOG_D("Temperature: %.2f °C", temp);
+  ALOG_D("Humidity: %.2f %%", hum);
+  ALOG_D("Pressure: %.2f hPa", pres);
 
-  // Calculate temperature in 0.01°C steps and add offset because of negative values
-  int16_t tempInt = (int16_t)((temperature * 100) + 5000);
-  
-  // Calculate air pressure in 0.1 hPa steps
-  uint16_t pressureInt = (uint16_t)(pressure * 10);
+  int16_t tempInt = (int16_t)((temp * 100) + 5000); // Calculate temperature in 0.01°C steps and add offset because of negative values
+  uint16_t pressureInt = (uint16_t)(pres * 10);   // Calculate air pressure in 0.1 hPa steps
+  uint8_t humInt = (uint8_t)(hum * 2);    // Calculate humidity in 0.5% steps
 
-  // Calculate humidity in 0.5% steps
-  uint8_t humInt = (uint8_t)(humidity * 2);
-  ALOG_D("Humidity value (scaled): %.2f, Humidity byte: %d", humidity, humInt);
-
-  getWindSpeed();
+  // Read wind speed data //////////////////////////////////////////////
+  windSpeedHandler.readData();
+  float windspeed = windSpeedHandler.getWindSpeed();
   uint16_t windInt = (uint16_t)(windspeed * 10);
+  ALOG_D("Wind Speed: %.2f km/h", windspeed);
 
+  // Read rain gauge data //////////////////////////////////////////////
   rainAmount = rainHandler.getRainCnt() * 0.2794; // 0.2794 mm per tip
-  uint16_t rainAmountInt = (uint16_t)(rainAmount * 10);
   ALOG_D("Rain amount: %.2f mm", rainAmount);
+  uint16_t rainAmountInt = (uint16_t)(rainAmount * 10);
 
-  float windDirection = getWindDirection();
-  String windDirectionLabel = getWindDirectionLabel(windDirection);
+  // Read wind direction data //////////////////////////////////////////////
+  windDirectionHandler.readData();
+  float windDirection = windDirectionHandler.getWindDirection();
+  String windDirectionLabel = windDirectionHandler.getWindDirectionLabel(windDirection);
   ALOG_D("Wind Direction: %.1f°, %s", windDirection, windDirectionLabel.c_str());
-
   uint16_t windDirectionInt = (uint16_t)(windDirection / 22.5);
-  ALOG_D("Wind Direction Int: %d", windDirectionInt);
 
   int adcValueLightIntensity = getLightIntensity();
   uint8_t lightInt = (uint8_t)(adcValueLightIntensity * 255 / 4095);
@@ -322,22 +228,15 @@ void setup()
 {
   // Initialize Wire1 for I2C1 (alternative pins) and configure sensor pins
   Wire1.begin(SDA_I2C1, SCL_I2C1);
-  pinMode(anemoPin, INPUT_PULLUP);
-  pinMode(windVanePin, INPUT);
   analogSetPinAttenuation(lightPin, ADC_11db);
 
-  // Initialize BME280 sensor
-  if (!bme.begin(0x76, &Wire1)) {
-    ALOG_E("BME280 nicht gefunden. Starte ohne Sensorwerte.");
-  } else {
-    ALOG_D("BME280 erfolgreich initialisiert.");
-  }
-
-
   batteryHandler.setup();
+  bme280Handler.setup();
   loRaWANHandler.setup();
   rainHandler.setup();
   sunshineHoursHandler.setup();
+  windDirectionHandler.setup();
+  windSpeedHandler.setup();
 }
 
 /**
