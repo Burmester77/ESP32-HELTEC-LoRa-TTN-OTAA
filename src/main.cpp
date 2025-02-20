@@ -18,6 +18,7 @@
 #include <BatteryHandler.hpp>
 #include <RainHandler.hpp>
 #include <SoilMoistureHandler.hpp>
+#include <SunshineHoursHandler.hpp>
 #include <rom/crc.h>
 #include <alog.h>
 #include <Wire.h>
@@ -146,20 +147,16 @@ void windCounter(){
 // Function to measure the wind speed
 void getWindSpeed() {
   attachInterrupt(digitalPinToInterrupt(anemoPin), windCounter , FALLING);
-  delay(3000); // 3 Sekunden messen
+  uint32_t startTime = millis();
+  while(millis() - startTime < 10000) {
+  vTaskDelay(10);
+  }
   detachInterrupt(anemoPin);
   windspeed = ((float)windCnt / (float)3 * 2.4) / 2;
   ALOG_D("Impulse: %d, Windspeed: %.2f", windCnt, windspeed);
 
     windCnt = 0;
   }
-
-
-/* // Function to measure the rain amount
-void getRainAmount() {
-  rainAmount = (float)rainCnt * 0.2794; // 0.2794 mm per tip
-  rainCnt = 0;
-} */
 
 ///////////////////////////////////////////// Wind direction calculation //////////////////////////////////////////////
 
@@ -208,6 +205,14 @@ int getLightIntensity() {
   return analogRead(lightPin);
 }
 
+// Function to wait non-blocking for a certain time //////////////////////////////////////////////
+
+void wait(uint64_t delay_ms){
+  uint64_t start = esp_timer_get_time();
+  while (esp_timer_get_time() - start < delay_ms * 1000ULL){
+    vTaskDelay(10);
+  }
+}
 
 /**
  * @brief Prepares the transmission frame for LoRaWAN.
@@ -224,7 +229,7 @@ void prepareTxFrame(uint8_t port)
   if ( loRaWANHandler.getSendDelay() > 0 )
   {
     ALOG_D("Send delay: %dms", loRaWANHandler.getSendDelay());
-    delay(loRaWANHandler.getSendDelay());
+    wait(loRaWANHandler.getSendDelay());
   }
 
   ALOG_D("Wake up reason: %d", esp_sleep_get_wakeup_cause());
@@ -275,9 +280,13 @@ void prepareTxFrame(uint8_t port)
   soilMoistureHandler.readData();
   int soilMoisture = soilMoistureHandler.getMappedMoistureValue();
   uint8_t soilMoistureInt = (uint8_t)(soilMoisture * 2);
-
+/* 
+  sunshineHoursHandler.readData();
+  float sunshine = sunshineHoursHandler.getDS18B20Temperature();
+  uint8_t SunshineValueInt = (uint8_t)(sunshine * 2);
+  ALOG_D("Light: %.2f", sunshine);
+ */
   
-
   // Build LoRaWAN data frame
   appDataSize = 18; // Size set to 18 bytes
   appData[0] = 0x5A;
@@ -328,6 +337,7 @@ void setup()
   batteryHandler.setup();
   loRaWANHandler.setup();
   rainHandler.setup();
+  sunshineHoursHandler.setup();
 }
 
 /**

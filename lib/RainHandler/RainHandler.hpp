@@ -9,7 +9,7 @@ class RainHandler
     void setup();
     int getRainCnt();
     void resetRainCnt();
-    static void rainCounter();
+    static void IRAM_ATTR rainCounter();
 };
 
 extern RainHandler rainHandler;

@@ -11,8 +11,11 @@ const unsigned long debounceInterval = 500; // Debounce interval for rain gauge
 
 // Function to count the rain tips ///////////////////////////////////////
 void RainHandler::rainCounter(){
-  delay(100);
+  uint64_t currentTime = esp_timer_get_time(); // use esp_timer to be safe during interrupt
+  if (currentTime - lastRainTipTime > debounceInterval * 1000ULL){
     rainCnt++;
+    lastRainTipTime = currentTime;
+  }
 }
 
 // Setup rain gauge ////////////////////////////////////////////////////////////
