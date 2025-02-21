@@ -1,7 +1,7 @@
-#include "WindDirectionHandler.hpp"
+#include <WindDirectionHandler.hpp>
 #include <alog.h>
 
-#define windVanePin 4
+#define windVanePin 4 // Wind vane pin
 
 // Global instance of WindDirectionHandler
 WindDirectionHandler windDirectionHandler;
@@ -21,10 +21,12 @@ const float windAngles[16] = {
 // Variable to store wind direction
 float windDirection = 0.0;
 
+// Setup wind vane ////////////////////////////////////////////////////////////
 void WindDirectionHandler::setup() {
     pinMode(windVanePin, INPUT);
 }
 
+// Read wind direction ////////////////////////////////////////////////////////////
 void WindDirectionHandler::readData() {
     int adcValueWindVane = analogRead(windVanePin);
 
@@ -41,12 +43,12 @@ void WindDirectionHandler::readData() {
             closestIndex = i;
         }
     }
-
+    // Calculate the wind direction based on the closest index
     windDirection = windAngles[closestIndex];
-    ALOG_D("ADC Value: %d, Closest Match: %d, Wind Direction: %.1f°", 
-           adcValueWindVane, adcValuesPerAngle[closestIndex], windDirection);
+    //ALOG_D("ADC Value: %d, Closest Match: %d, Wind Direction: %.1f°", adcValueWindVane, adcValuesPerAngle[closestIndex], windDirection);
 }
 
+// Get the wind direction ////////////////////////////////////////////////////////////
 float WindDirectionHandler::getWindDirection() {
     return windDirection;
 }
@@ -70,29 +72,3 @@ String WindDirectionHandler::getWindDirectionLabel(float direction) {
     else if (direction == 337.5) return "NNW";
     else return "Unknown";
 }
-
-
-/* 
-
-// Calculation angle per index of wind vane (360 / 16 = 22.5)
-#define WIND_VANE_DEGREES_PER_INDEX (360.0 / NUM_ANGLES)
-
-    // ADC values for each wind direction (V(Wind Vane) / 3.3V * 4095)
-    #define ADC_ANGLE_0_0 2960
-    #define ADC_ANGLE_22_5 1482
-    #define ADC_ANGLE_45_0 1693
-    #define ADC_ANGLE_67_5 281
-    #define ADC_ANGLE_90_0 310
-    #define ADC_ANGLE_112_5 211
-    #define ADC_ANGLE_135_0 652
-    #define ADC_ANGLE_157_5 439
-    #define ADC_ANGLE_180_0 1036
-    #define ADC_ANGLE_202_5 870
-    #define ADC_ANGLE_225_0 2339
-    #define ADC_ANGLE_247_5 2221
-    #define ADC_ANGLE_270_0 3815
-    #define ADC_ANGLE_292_5 3154
-    #define ADC_ANGLE_315_0 3467
-    #define ADC_ANGLE_337_5 2618
-
-    #define ADC_RESOLUTION 12 */

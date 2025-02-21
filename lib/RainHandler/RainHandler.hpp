@@ -10,6 +10,7 @@ class RainHandler
     int getRainCnt();
     void resetRainCnt();
     static void IRAM_ATTR rainCounter();
+    float getRainAmount();
 };
 
 extern RainHandler rainHandler;

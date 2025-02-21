@@ -3,6 +3,7 @@
 
 #define soilPin 3 // SoilWatch10 sensor pin
 
+// Global instance of SoilMoistureHandler
 SoilMoistureHandler soilMoistureHandler;
 
 const int minADC = 6;         // Dry value (air)
@@ -16,7 +17,7 @@ int mappedMoistureValue = 0; // Mapped value in percent
 void SoilMoistureHandler::readData() {
     rawMoistureValue = analogRead(soilPin);
     mappedMoistureValue = map(rawMoistureValue, minADC, maxADC, 0, 100);
-    ALOG_D("Soil Moisture: ADC = %d, Mapped Value = %d%%", rawMoistureValue, mappedMoistureValue);
+    // ALOG_D("Soil Moisture: ADC = %d, Mapped Value = %d%%", rawMoistureValue, mappedMoistureValue);
 }
 
 // Get raw moisture value ////////////////////////////////////////////////////////////

@@ -65,8 +65,9 @@ function decodeUplink(input) {
   data.lightIntensityAnalogValue = analogValue;
 
   data.soilMoisture = (input.bytes[16]) / 2.0;
+  data.sunStatus = input.bytes[17];
 
-  data.crc8le = input.bytes[17];
+  data.crc8le = input.bytes[18];
 
 
   return {

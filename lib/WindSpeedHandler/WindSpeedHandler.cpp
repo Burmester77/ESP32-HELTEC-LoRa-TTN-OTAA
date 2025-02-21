@@ -1,6 +1,7 @@
-#include "WindSpeedHandler.hpp"
+#include <WindSpeedHandler.hpp>
 #include <alog.h>
 
+// Global instance of WindSpeedHandler
 WindSpeedHandler windSpeedHandler;
 
 #define anemoPin 47 // Wind speed sensor pin
@@ -9,14 +10,17 @@ WindSpeedHandler windSpeedHandler;
 volatile int windCnt = 0;
 float windspeed = 0.0;
 
+// Function to count the wind impulses ///////////////////////////////////////
 void IRAM_ATTR WindSpeedHandler::windCounter() {
     windCnt++;
 }
 
+// Setup wind speed sensor ////////////////////////////////////////////////////////////
 void WindSpeedHandler::setup() {
     pinMode(anemoPin, INPUT_PULLUP);
 }
 
+// Read wind speed ////////////////////////////////////////////////////////////
 void WindSpeedHandler::readData() {
     windCnt = 0;
     attachInterrupt(digitalPinToInterrupt(anemoPin), windCounter, FALLING);
@@ -29,6 +33,7 @@ void WindSpeedHandler::readData() {
     // ALOG_D("Impulse: %d, Windspeed: %.2f km/h", windCnt, windspeed);
 }
 
+// Get the wind speed ////////////////////////////////////////////////////////////
 float WindSpeedHandler::getWindSpeed() {
     return windspeed;
 }

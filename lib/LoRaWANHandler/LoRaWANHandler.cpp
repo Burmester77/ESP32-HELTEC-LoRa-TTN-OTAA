@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "LoRaWANHandler.hpp"
-#include "RainHandler.hpp"
+#include <LoRaWANHandler.hpp>
+#include <RainHandler.hpp>
 #include <LoRaWan_APP.h>
 #include <Wire.h>
 #include <HT_SSD1306Wire.h>
@@ -115,7 +115,6 @@ void downLinkDataHandle(McpsIndication_t *mcpsIndication)
 }
 
 // LoRaWANHandler Class implementation //////////////////////////////////////
-
 void LoRaWANHandler::printHex(char *label, uint8_t *buffer, int length)
 {
   Serial.print(label);
@@ -127,6 +126,7 @@ void LoRaWANHandler::printHex(char *label, uint8_t *buffer, int length)
   Serial.println();
 }
 
+// Initialize the LoRaWAN configuration /////////////////////////////////////
 void LoRaWANHandler::initConfig(bool showConfig)
 {
   Preferences preferences;
@@ -214,6 +214,7 @@ void LoRaWANHandler::initConfig(bool showConfig)
   }
 }
 
+// Set the sleep time ///////////////////////////////////////////////////////
 void LoRaWANHandler::setSleepTime(uint32_t _sleepTime)
 {
   Preferences preferences;
@@ -223,6 +224,7 @@ void LoRaWANHandler::setSleepTime(uint32_t _sleepTime)
   appTxDutyCycle = _sleepTime;
 }
 
+// Set the send delay ///////////////////////////////////////////////////////
 void LoRaWANHandler::setSendDelay(uint32_t _sendDelay)
 {
   Preferences preferences;
@@ -232,6 +234,7 @@ void LoRaWANHandler::setSendDelay(uint32_t _sendDelay)
   sendDelay = _sendDelay;
 }
 
+// Get the actual time from the RTC //////////////////////////////////////////
 uint64_t now(){
   gettimeofday(&tv, NULL);
   return tv.tv_sec *1000000l + tv.tv_usec;
@@ -241,8 +244,6 @@ void LoRaWANHandler::setup()
 {
   pinMode(GPIO_NUM_0, INPUT_PULLUP);
   pinMode(Vext, OUTPUT);
-
-  gettimeofday(&tv, NULL);
 
 #ifdef DEVELOPMENT_MODE
   pinMode(LED_BUILTIN, OUTPUT);
@@ -306,20 +307,19 @@ void LoRaWANHandler::loop()
   }
   case DEVICE_STATE_SEND:
   {
-    wakeupReason = esp_sleep_get_wakeup_cause();
+    wakeupReason = esp_sleep_get_wakeup_cause(); // Get the wake up reason to determine the next step
 
     // Handle external wakeup (rain gauge)
     if (wakeupReason == ESP_SLEEP_WAKEUP_EXT0)
     {
       rainHandler.rainCounter();
-      ALOG_D("Wake up by rain gauge");
+      // ALOG_D("Wake up by rain gauge");
       usTimeLeft = (int64_t)(getSleepTime() * 1000) - (int64_t)(now() - lastTimerSleep);
       if (usTimeLeft <= 0)
       {
         usTimeLeft = ((getSleepTime() * 1000) + 5000);
       }
-      // sleep time left
-      ALOG_D("SleepTime left: %lld ms", usTimeLeft / 1000);
+      ALOG_D("Wake up by rain gauge - sleep time left: %lld ms", usTimeLeft / 1000);
       esp_sleep_enable_timer_wakeup(usTimeLeft);
       esp_deep_sleep_start();
       break;
@@ -327,20 +327,20 @@ void LoRaWANHandler::loop()
     else if (wakeupReason == ESP_SLEEP_WAKEUP_TIMER)
     {
       prepareTxFrame(appPort);
-      ALOG_D("Wake up by timer");
+      // ALOG_D("Wake up by timer");
       if (resetReason == ESP_RST_POWERON || resetReason == ESP_RST_EXT)
       {
         LoRaWAN.displaySending();
       }
       LoRaWAN.send();
       rainHandler.resetRainCnt(); // Reset rain counter after sending
-      lastTimerSleep = now();
+      lastTimerSleep = now();  // Store the time of the last sleep
       deviceState = DEVICE_STATE_CYCLE;
       break;
     }
     else
     {
-      ALOG_D("Wake up by unknown reason");
+      ALOG_D("Wake up by unknown reason / reset");
       lastTimerSleep = now();
       deviceState = DEVICE_STATE_CYCLE;
       break;

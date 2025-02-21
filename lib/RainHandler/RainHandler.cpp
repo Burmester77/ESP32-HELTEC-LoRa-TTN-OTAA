@@ -1,8 +1,9 @@
-#include "RainHandler.hpp"
+#include <RainHandler.hpp>
 #include <alog.h>
 
 #define rainPin 7   // Rain gauge pin
 
+// Global instance of RainHandler
 RainHandler rainHandler;
 
 RTC_DATA_ATTR volatile int rainCnt = 0;  // Global variable for rain impulses
@@ -16,9 +17,9 @@ void RainHandler::rainCounter(){
   if (currentTime - lastRainTipTime > debounceInterval * 1000ULL){
     rainCnt++;
     lastRainTipTime = currentTime;
-    ALOG_D("Rain tip detected. New count: %d", rainCnt);
+ /*    ALOG_D("Rain tip detected. New count: %d", rainCnt);
   } else {
-    ALOG_D("Rain tip ignored. Debounce interval not reached.");
+    ALOG_D("Rain tip ignored. Debounce interval not reached."); */
   }
 }
 
@@ -39,5 +40,7 @@ void RainHandler::resetRainCnt(){
   rainCnt = 0;
 }
 
-
-extern RainHandler rainHandler;
+// Calculate rain amount ////////////////////////////////////////////////////////////
+float RainHandler::getRainAmount(){
+  return rainCnt * 0.2794; // 0.2794 mm per tip
+}
