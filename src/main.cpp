@@ -80,7 +80,7 @@ void prepareTxFrame(uint8_t port)
 {
   // ALOG_D("Wake up reason: %d", esp_sleep_get_wakeup_cause());
 
-  // Read defined send delay - sensor-warm-up time
+  // Read defined SEND DELAY - sensor-warm-up time //////////////////////////////////////////////
   if ( loRaWANHandler.getSendDelay() > 0 )
   {
     ALOG_D("Send delay: %dms", loRaWANHandler.getSendDelay());
@@ -107,7 +107,7 @@ void prepareTxFrame(uint8_t port)
   // Read LIGHT INTENSITY data //////////////////////////////////////////////
   lightIntensityHandler.readData();
   uint8_t lightInt = lightIntensityHandler.getNormalizedLightValue();
-  ALOG_D("Light intensity - Raw ADC Value: %d", lightIntensityHandler.getRawLightValue());
+  ALOG_D("Light intensity - ADC Value: %d", lightIntensityHandler.getRawLightValue());
 
   // Read RAIN GAUGE data //////////////////////////////////////////////
   float rainAmount = rainHandler.getRainAmount();
@@ -117,7 +117,7 @@ void prepareTxFrame(uint8_t port)
   // Read SOIL MOISTURE data //////////////////////////////////////////////
   soilMoistureHandler.readData();
   int soilMoisture = soilMoistureHandler.getMappedMoistureValue();
-  ALOG_D("Soil moisture: %d", soilMoisture);
+  ALOG_D("Soil moisture: %d %", soilMoisture);
   uint8_t soilMoistureInt = (uint8_t)(soilMoisture * 2);
 
   // Read SUN STATUS data ////////////////////////////////////////////
@@ -126,21 +126,20 @@ void prepareTxFrame(uint8_t port)
   uint8_t sunStatus = sunShining ? 1 : 0; // 1 = sun, 0 = no sun 
   ALOG_D("Sunshine status: %s", sunShining ? "Sun" : "No sun");
 
-  // Read wind direction data //////////////////////////////////////////////
+  // Read WIND DIRECTION data //////////////////////////////////////////////
   windDirectionHandler.readData();
   float windDirection = windDirectionHandler.getWindDirection();
   String windDirectionLabel = windDirectionHandler.getWindDirectionLabel(windDirection);
   ALOG_D("Wind Direction: %.1f°, %s", windDirection, windDirectionLabel.c_str());
   uint16_t windDirectionInt = (uint16_t)(windDirection / 22.5); // Calculate wind direction in 22.5° steps
 
-  // Read wind speed data //////////////////////////////////////////////
+  // Read WIND SPEED data //////////////////////////////////////////////
   ALOG_D("Measuring wind speed (10 seconds)...");
   windSpeedHandler.readData();
   float windspeed = windSpeedHandler.getWindSpeed();
   ALOG_D("Wind Speed: %.2f km/h", windspeed);
   uint16_t windInt = (uint16_t)(windspeed * 10); // Calculate wind speed in 0.1 km/h steps
  
-  
   // Build LoRaWAN data frame //////////////////////////////////////////////
   appDataSize = 19; // Size set to 18 bytes
   appData[0] = 0x5A;
