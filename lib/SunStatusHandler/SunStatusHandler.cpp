@@ -36,8 +36,10 @@ float SunStatusHandler::getDS18B20Temperature() {
 // Check if the sun is shining //////////////////////////////////////////
 bool SunStatusHandler::isSunShining() {
     float bme280Temperature = bme280Handler.getTemperature();
+    //ALOG_D("BME280 Temperature: %.2f", bme280Temperature);
     // Calculate the temperature difference between the BME280 and DS18B20 sensor
-    float temperatureDifference = bme280Temperature - DS18B20temperature;
+    float temperatureDifference = DS18B20temperature - bme280Temperature;
+    //ALOG_D("Temperature difference: %.2f", temperatureDifference);
     // ALOG_D("Temperature difference: %.2f", temperatureDifference);
     // If the temperature difference is greater than the threshold, the sun is shining
     if (temperatureDifference > sunshineThreshold) {
