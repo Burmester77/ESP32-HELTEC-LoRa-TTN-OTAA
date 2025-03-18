@@ -13,7 +13,7 @@ DallasTemperature sensors(&oneWire);
 
 // Variable to store the temperature
 float DS18B20temperature = 0.0;
-const float sunshineThreshold = 14.0; // Temperature difference threshold for sunshine detection
+const float sunshineThreshold = 9.0; // Temperature difference threshold for sunshine detection
 
 // Setup the DS18B20 sensor //////////////////////////////////////////
 void SunStatusHandler::setup() {

@@ -122,7 +122,7 @@ void prepareTxFrame(uint8_t port)
 
   // Read SUN STATUS data ////////////////////////////////////////////
   sunStatusHandler.readData();
-  float sunShining = sunStatusHandler.isSunShining();
+  bool sunShining = sunStatusHandler.isSunShining();
   uint8_t sunStatus = sunShining ? 1 : 0; // 1 = sun, 0 = no sun 
   ALOG_D("Sunshine status: %s", sunShining ? "Sun" : "No sun");
 
